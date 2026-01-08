@@ -1,5 +1,5 @@
 
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { parseTimesheetCsv } from './utils/jira-parser';
 import { ParsedData, TimesheetRow } from './types';
 import TimesheetTable from './components/TimesheetTable';
@@ -26,9 +26,45 @@ const App: React.FC = () => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [editModal, setEditModal] = useState<EditModalState | null>(null);
+  
+  const [modalSelectedProject, setModalSelectedProject] = useState<string>('');
+  const [modalHours, setModalHours] = useState<number>(0);
 
-  // Derived unique projects for the "Add" dropdown
   const projects = useMemo(() => Array.from(new Set(data.rows.map(r => r.project))).sort(), [data.rows]);
+
+  // Logs for the current member on the current date across all projects
+  const dayLogs = useMemo(() => {
+    if (!editModal) return [];
+    return data.rows
+      .filter(r => r.member === editModal.member && (r.dailyHours[editModal.date] || 0) > 0)
+      .map(r => ({
+        project: r.project,
+        hours: r.dailyHours[editModal.date]
+      }))
+      .sort((a, b) => a.project.localeCompare(b.project));
+  }, [data.rows, editModal]);
+
+  useEffect(() => {
+    if (editModal) {
+      if (editModal.type === 'edit' && editModal.project) {
+        setModalSelectedProject(editModal.project);
+        setModalHours(editModal.hours);
+      } else if (editModal.type === 'add') {
+        const defaultProject = projects[0] || '';
+        setModalSelectedProject(defaultProject);
+        const existing = data.rows.find(r => r.member === editModal.member && r.project === defaultProject);
+        setModalHours(existing?.dailyHours[editModal.date] || 0);
+      }
+    }
+  }, [editModal, projects, data.rows]);
+
+  const handleProjectChange = (project: string) => {
+    setModalSelectedProject(project);
+    if (editModal) {
+      const existing = data.rows.find(r => r.member === editModal.member && r.project === project);
+      setModalHours(existing?.dailyHours[editModal.date] || 0);
+    }
+  };
 
   const processFile = (file: File) => {
     if (!file || !file.name.endsWith('.csv')) {
@@ -67,24 +103,21 @@ const App: React.FC = () => {
       let rowIndex = newRows.findIndex(r => r.member === member && r.project === project);
       
       if (rowIndex === -1) {
-        // Create new row if it doesn't exist (for "Add" from Member table)
         const newRow: TimesheetRow = {
           member,
           project,
           dailyHours: { [date]: hours },
           totalHours: hours,
-          memberTotalMonth: 0 // Will be recalculated
+          memberTotalMonth: 0 
         };
         newRows.push(newRow);
       } else {
         const row = { ...newRows[rowIndex] };
         row.dailyHours = { ...row.dailyHours, [date]: hours };
-        // Fixed: Explicitly type the reduce parameters to avoid "unknown" errors on line 82
         row.totalHours = Object.values(row.dailyHours).reduce((sum: number, h: number) => sum + h, 0);
         newRows[rowIndex] = row;
       }
 
-      // Recalculate memberTotalMonth for all rows of this member
       const memberTotal = newRows
         .filter((r: TimesheetRow) => r.member === member)
         .reduce((sum: number, r: TimesheetRow) => sum + r.totalHours, 0);
@@ -93,10 +126,10 @@ const App: React.FC = () => {
       
       return { 
         ...prev, 
-        // Fixed: Corrected comparison bug: should compare a.member to b.member
         rows: finalRows.sort((a, b) => a.project.localeCompare(b.project) || a.member.localeCompare(b.member)) 
       };
     });
+    // Don't close modal if updating within same day context might be needed, but for now we follow old behavior
     setEditModal(null);
   };
 
@@ -109,7 +142,7 @@ const App: React.FC = () => {
     if (!editModal) return;
     const formData = new FormData(e.currentTarget);
     const hours = parseFloat(formData.get('hours') as string) || 0;
-    const project = (formData.get('project') as string) || editModal.project;
+    const project = modalSelectedProject;
     if (project) {
       updateEntry(editModal.member, project, editModal.date, hours);
     }
@@ -172,77 +205,128 @@ const App: React.FC = () => {
       {/* Edit/Add Modal */}
       {editModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
-            <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
-              <h3 className="font-bold text-slate-800">
-                {editModal.type === 'edit' ? 'Edit Worklog' : 'Add Worklog'}
-              </h3>
-              <button onClick={() => setEditModal(null)} className="text-slate-400 hover:text-slate-600 transition-colors">
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-              </button>
-            </div>
-            <form onSubmit={handleModalSubmit} className="p-6 space-y-4">
-              <div className="flex items-center gap-3 p-3 bg-slate-50 rounded-lg">
-                <div className="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 font-bold">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden animate-in zoom-in-95 duration-200 flex flex-col md:flex-row">
+            
+            {/* Form Section */}
+            <div className="flex-1 border-r border-slate-100 p-6 space-y-4">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-bold text-slate-800 text-lg">
+                  {editModal.type === 'edit' ? 'Edit Worklog' : 'Add Worklog'}
+                </h3>
+                <button onClick={() => setEditModal(null)} className="md:hidden text-slate-400 hover:text-slate-600 transition-colors">
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                </button>
+              </div>
+
+              <div className="flex items-center gap-3 p-3 bg-indigo-50/50 rounded-lg border border-indigo-100">
+                <div className="w-10 h-10 rounded-full bg-indigo-600 flex items-center justify-center text-white font-bold">
                   {editModal.member[0]}
                 </div>
                 <div>
                   <p className="text-sm font-bold text-slate-800">{editModal.member}</p>
-                  <p className="text-xs text-slate-500">{editModal.date}</p>
+                  <p className="text-xs text-indigo-600 font-medium uppercase">{editModal.date}</p>
                 </div>
               </div>
 
-              {editModal.type === 'add' ? (
+              <form onSubmit={handleModalSubmit} className="space-y-4">
                 <div>
-                  <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Project</label>
-                  <select name="project" required className="w-full px-4 py-2 bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all text-sm">
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Project</label>
+                  <select 
+                    name="project" 
+                    required 
+                    value={modalSelectedProject}
+                    onChange={(e) => handleProjectChange(e.target.value)}
+                    className="w-full px-4 py-2 bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all text-sm font-medium"
+                  >
                     {projects.map(p => <option key={p} value={p}>{p}</option>)}
-                    <option value="">+ New Project Code</option>
                   </select>
                 </div>
-              ) : (
+
                 <div>
-                  <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Project</label>
-                  <div className="px-4 py-2 bg-slate-100 text-slate-600 font-mono text-xs rounded-lg border border-slate-200">
-                    {editModal.project}
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Hours</label>
+                  <div className="relative">
+                    <input 
+                      type="number" 
+                      step="0.5" 
+                      min="0" 
+                      max="24"
+                      name="hours" 
+                      key={`${modalSelectedProject}-${editModal.date}`} 
+                      defaultValue={modalHours || ''}
+                      placeholder="e.g. 8"
+                      autoFocus
+                      required
+                      className="w-full px-4 py-3 bg-white border-2 border-slate-200 rounded-xl focus:ring-4 focus:ring-indigo-100 focus:border-indigo-500 outline-none transition-all text-lg font-bold text-slate-900"
+                    />
+                    <div className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-300 font-bold">hrs</div>
                   </div>
                 </div>
-              )}
 
-              <div>
-                <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Hours</label>
-                <input 
-                  type="number" 
-                  step="0.5" 
-                  min="0" 
-                  max="24"
-                  name="hours" 
-                  defaultValue={editModal.hours || ''}
-                  placeholder="e.g. 8"
-                  autoFocus
-                  required
-                  className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all"
-                />
-              </div>
-
-              <div className="flex gap-3 pt-4">
-                {editModal.type === 'edit' && (
+                <div className="flex gap-3 pt-4">
+                  {(editModal.type === 'edit' || modalHours > 0) && (
+                    <button 
+                      type="button"
+                      onClick={() => deleteEntry(editModal.member, modalSelectedProject, editModal.date)}
+                      className="flex-1 px-4 py-2.5 bg-white border-2 border-red-100 text-red-600 text-sm font-bold rounded-xl hover:bg-red-50 hover:border-red-200 transition-all"
+                    >
+                      Delete
+                    </button>
+                  )}
                   <button 
-                    type="button"
-                    onClick={() => deleteEntry(editModal.member, editModal.project!, editModal.date)}
-                    className="flex-1 px-4 py-2 bg-white border border-red-200 text-red-600 text-sm font-medium rounded-lg hover:bg-red-50 transition-all"
+                    type="submit"
+                    className="flex-[2] px-4 py-2.5 bg-indigo-600 text-white text-sm font-bold rounded-xl hover:bg-indigo-700 shadow-lg shadow-indigo-100 transition-all"
                   >
-                    Delete Log
+                    Save Entry
                   </button>
-                )}
-                <button 
-                  type="submit"
-                  className="flex-1 px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 shadow-md transition-all"
-                >
-                  Save Changes
+                </div>
+              </form>
+            </div>
+
+            {/* List Section */}
+            <div className="bg-slate-50 w-full md:w-56 p-6 border-t md:border-t-0 border-slate-100 overflow-y-auto max-h-[400px]">
+              <div className="flex items-center justify-between mb-4">
+                <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Logged Today</h4>
+                <button onClick={() => setEditModal(null)} className="hidden md:block text-slate-400 hover:text-slate-600">
+                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
                 </button>
               </div>
-            </form>
+              <div className="space-y-2">
+                {dayLogs.length === 0 ? (
+                  <p className="text-xs text-slate-400 italic py-4">No entries yet for this date.</p>
+                ) : (
+                  dayLogs.map((log) => (
+                    <button
+                      key={log.project}
+                      onClick={() => handleProjectChange(log.project)}
+                      className={`w-full text-left p-2.5 rounded-lg border transition-all flex items-center justify-between group ${
+                        modalSelectedProject === log.project 
+                          ? 'bg-white border-indigo-200 shadow-sm ring-2 ring-indigo-50' 
+                          : 'bg-transparent border-slate-200 hover:border-indigo-200 hover:bg-white'
+                      }`}
+                    >
+                      <div className="overflow-hidden">
+                        <p className={`text-[11px] font-bold truncate ${modalSelectedProject === log.project ? 'text-indigo-600' : 'text-slate-700'}`}>
+                          {log.project}
+                        </p>
+                        <p className="text-[9px] text-slate-400 font-medium">Project Code</p>
+                      </div>
+                      <div className={`text-xs font-black px-1.5 py-0.5 rounded ${modalSelectedProject === log.project ? 'bg-indigo-600 text-white' : 'bg-slate-200 text-slate-600'}`}>
+                        {log.hours}h
+                      </div>
+                    </button>
+                  ))
+                )}
+              </div>
+              <div className="mt-6 pt-4 border-t border-slate-200">
+                <div className="flex justify-between items-center text-xs">
+                  <span className="text-slate-400 font-bold uppercase text-[9px]">Daily Total</span>
+                  <span className="text-slate-900 font-black">
+                    {dayLogs.reduce((sum, l) => sum + (l.hours || 0), 0)}h
+                  </span>
+                </div>
+              </div>
+            </div>
+
           </div>
         </div>
       )}
