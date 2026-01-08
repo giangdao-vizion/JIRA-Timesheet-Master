@@ -1,0 +1,5 @@
+{
+  "name": "JIRA Timesheet Summarizer",
+  "description": "A professional tool to process JIRA timesheet CSV exports and generate a clean, project-member summary table with decimal hour conversions.",
+  "requestFramePermissions": []
+}
