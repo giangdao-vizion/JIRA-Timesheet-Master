@@ -3,42 +3,156 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>JIRA Timesheet Summary - No Build Version</title>
+    <title>JIRA Timesheet Summary - Vanilla JS Version</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     <style>
         body { font-family: 'Inter', sans-serif; }
         .font-mono { font-family: 'JetBrains Mono', monospace; }
-        /* Custom scrollbar for better look */
         ::-webkit-scrollbar { width: 8px; height: 8px; }
         ::-webkit-scrollbar-track { background: #f1f5f9; }
         ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
         ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+        .dragging { background-color: rgba(99, 102, 241, 0.1) !important; outline: 4px dashed #6366f1; outline-offset: -10px; }
     </style>
 </head>
-<body class="bg-slate-50 text-slate-900">
-    <div id="root"></div>
+<body class="bg-slate-50 text-slate-900 transition-colors duration-200" id="drop-zone">
+    <div id="app" class="min-h-screen p-4 md:p-8 space-y-8">
+        <!-- Header -->
+        <header class="max-w-7xl mx-auto flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div>
+                <h1 class="text-2xl font-bold text-slate-900 tracking-tight flex items-center gap-2">
+                    <svg class="w-8 h-8 text-indigo-600" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M21 16.5c0 .38-.21.71-.53.88l-7.9 4.44c-.16.09-.36.14-.57.14s-.41-.05-.57-.14l-7.9-4.44A.991.991 0 013 16.5v-9c0-.38.21-.71.53-.88l7.9-4.44c.16-.09.36-.14.57-.14s.41.05.57.14l7.9 4.44c.32.17.53.5.53.88v9zM12 4.15L6.04 7.5 12 10.85l5.96-3.35L12 4.15zM5 15.91l6 3.38v-6.71L5 9.21v6.7zm14 0v-6.7l-6 3.37v6.71l6-3.38z" />
+                    </svg>
+                    JIRA Timesheet Summary
+                </h1>
+                <p class="text-slate-500 mt-1">Vanilla JavaScript Version (No React/Vite)</p>
+            </div>
+            <div class="flex items-center gap-3">
+                <button id="load-sample" class="px-4 py-2 text-sm font-medium text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 shadow-sm transition-all">Load Sample</button>
+                <label class="relative cursor-pointer">
+                    <input type="file" id="csv-upload" accept=".csv" class="hidden">
+                    <div class="px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 shadow-md flex items-center gap-2 transition-all">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a2 2 0 002 2h12a2 2 0 002-2v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                        </svg>
+                        Upload CSV
+                    </div>
+                </label>
+            </div>
+        </header>
 
-    <script type="module">
-        import React, { useState, useCallback, useMemo, useEffect, useRef } from 'https://esm.sh/react@19.0.0';
-        import ReactDOM from 'https://esm.sh/react-dom@19.0.0/client';
-        import { 
-            BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
-            PieChart, Pie, Cell
-        } from 'https://esm.sh/recharts@2.15.0';
+        <!-- Main Content -->
+        <main class="max-w-7xl mx-auto" id="main-content">
+            <div id="empty-state" class="flex flex-col items-center justify-center p-16 bg-white rounded-2xl border-2 border-dashed border-slate-200">
+                <h2 class="text-xl font-bold text-slate-700 mb-2">Upload your JIRA CSV to start</h2>
+                <p class="text-slate-400">Drag and drop your file anywhere or use the button above</p>
+            </div>
+            
+            <div id="dashboard" class="hidden space-y-12">
+                <!-- Timesheet Table Section -->
+                <section class="space-y-4">
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center gap-2">
+                            <div class="w-1 h-6 bg-indigo-600 rounded-full"></div>
+                            <h2 class="text-lg font-bold text-slate-800">Project-Member Summary</h2>
+                        </div>
+                        <button id="export-csv" class="flex items-center gap-2 px-3 py-1.5 text-xs font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-lg transition-all">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a2 2 0 002 2h12a2 2 0 002-2v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                            </svg>
+                            Export CSV
+                        </button>
+                    </div>
+                    <div id="timesheet-container" class="w-full overflow-x-auto bg-white rounded-xl shadow-sm border border-slate-200">
+                        <!-- Table injected here -->
+                    </div>
+                </section>
 
-        // --- UTILS: Date Utils ---
+                <!-- Member Summary Section -->
+                <section class="space-y-4">
+                    <div class="flex items-center gap-2">
+                        <div class="w-1 h-6 bg-indigo-600 rounded-full"></div>
+                        <h2 class="text-lg font-bold text-slate-800">Member Daily Totals</h2>
+                    </div>
+                    <div id="member-summary-container" class="w-full overflow-x-auto bg-white rounded-xl shadow-sm border border-slate-200">
+                        <!-- Table injected here -->
+                    </div>
+                </section>
+
+                <!-- Charts Section -->
+                <section class="grid grid-cols-1 lg:grid-cols-3 gap-8 pt-8 border-t border-slate-200">
+                    <div class="lg:col-span-2 bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+                        <div class="flex items-center gap-2 mb-6">
+                            <div class="w-1 h-6 bg-indigo-600 rounded-full"></div>
+                            <h2 class="text-lg font-bold text-slate-800">Hours per Project by Member</h2>
+                        </div>
+                        <div class="h-[400px] w-full">
+                            <canvas id="barChart"></canvas>
+                        </div>
+                    </div>
+                    <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+                        <div class="flex items-center gap-2 mb-6">
+                            <div class="w-1 h-6 bg-emerald-500 rounded-full"></div>
+                            <h2 class="text-lg font-bold text-slate-800">Team Effort Allocation</h2>
+                        </div>
+                        <div class="h-[300px] w-full flex items-center justify-center">
+                            <canvas id="pieChart"></canvas>
+                        </div>
+                        <div id="pie-legend" class="mt-4 space-y-2"></div>
+                    </div>
+                </section>
+            </div>
+        </main>
+    </div>
+
+    <!-- Details Modal -->
+    <div id="details-modal" class="hidden fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-2xl p-6 space-y-4">
+            <div class="flex items-center justify-between">
+                <h3 class="font-bold text-slate-800 text-lg">Daily Timelog Details</h3>
+                <button onclick="closeDetailsModal()" class="text-slate-400 hover:text-slate-600">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+                </button>
+            </div>
+            <div class="p-3 bg-indigo-50 rounded-lg flex justify-between items-center">
+                <div>
+                    <p id="details-member" class="text-sm font-bold text-indigo-900"></p>
+                    <p id="details-project" class="text-xs text-indigo-600 font-mono"></p>
+                </div>
+                <p id="details-date" class="text-xs font-bold text-slate-500 bg-white px-2 py-1 rounded border border-indigo-100"></p>
+            </div>
+            <div id="details-list" class="max-h-[400px] overflow-y-auto space-y-3 pr-2">
+                <!-- Details list injected here -->
+            </div>
+            <div class="pt-4 border-t border-slate-100 flex justify-end">
+                <button onclick="closeDetailsModal()" class="px-6 py-2 bg-slate-100 text-slate-600 rounded-lg font-bold hover:bg-slate-200 transition-all">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- STATE ---
+        let state = {
+            data: { rows: [], dates: [] },
+            isProcessing: false,
+            editModal: null, // { m, p, d, h, type }
+            charts: { bar: null, pie: null }
+        };
+
+        const PROJECT_COLORS = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#f97316', '#14b8a6', '#4f46e5'];
+
+        // --- UTILS ---
         const isWeekend = (dateStr) => {
             try {
                 const date = new Date(dateStr);
                 const day = date.getDay();
                 return day === 0 || day === 6;
-            } catch (e) {
-                return false;
-            }
+            } catch (e) { return false; }
         };
 
-        // --- UTILS: JIRA Parser ---
         const parseJiraTimeString = (timeStr) => {
             if (!timeStr || timeStr === '0') return 0;
             const hourMatch = timeStr.match(/(\d+)h/);
@@ -50,10 +164,7 @@
             return hours;
         };
 
-        const getProjectCode = (key) => {
-            if (!key) return 'Unknown';
-            return key.split('-')[0];
-        };
+        const getProjectCode = (key) => key ? key.split('-')[0] : 'Unknown';
 
         const parseTimesheetCsv = (csvText) => {
             const parseCSVLine = (text) => {
@@ -79,8 +190,10 @@
             const authorIdx = header.indexOf('Worklog Author');
             const keyIdx = header.indexOf('Key');
             const avatarIdx = header.indexOf('Avatar');
+            const commentIdx = header.indexOf('Comment');
             
-            const datePattern = /^\d{1,2}-[A-Za-z]{3}-\d{2}$/;
+            // Support formats like "1-Dec-25" or "Feb 1, 2026"
+            const datePattern = /^(\d{1,2}-[A-Za-z]{3}-\d{2})|([A-Za-z]{3} \d{1,2}, \d{4})$/;
             const dateIndices = [];
             const dateStrings = [];
 
@@ -101,6 +214,8 @@
                 const memberName = row[authorIdx];
                 const projectCode = getProjectCode(row[keyIdx]);
                 const avatar = row[avatarIdx];
+                const comment = row[commentIdx] || '';
+                const taskKey = row[keyIdx] || '';
                 const aggKey = `${memberName}|${projectCode}`;
 
                 if (!aggregation[aggKey]) {
@@ -109,6 +224,7 @@
                         project: projectCode,
                         avatar,
                         dailyHours: {},
+                        dailyLogs: {}, // Store individual task details
                         totalHours: 0,
                         memberTotalMonth: 0
                     };
@@ -119,6 +235,14 @@
                     const decimalHours = parseJiraTimeString(row[colIdx]);
                     if (decimalHours > 0) {
                         aggregation[aggKey].dailyHours[dateStr] = (aggregation[aggKey].dailyHours[dateStr] || 0) + decimalHours;
+                        
+                        if (!aggregation[aggKey].dailyLogs[dateStr]) aggregation[aggKey].dailyLogs[dateStr] = [];
+                        aggregation[aggKey].dailyLogs[dateStr].push({
+                            key: taskKey,
+                            comment: comment,
+                            hours: decimalHours
+                        });
+
                         aggregation[aggKey].totalHours += decimalHours;
                         memberTotals[memberName] = (memberTotals[memberName] || 0) + decimalHours;
                     }
@@ -136,8 +260,8 @@
             };
         };
 
-        // --- UTILS: CSV Exporter ---
-        const exportToCsv = (data, filename = 'timesheet_summary.csv') => {
+        const exportToCsv = () => {
+            const { data } = state;
             const headers = ['Project', 'Member', ...data.dates, 'Project Total', 'Working Time'];
             const csvRows = data.rows.map(row => {
                 const dailyValues = data.dates.map(date => (row.dailyHours[date] || 0).toString());
@@ -153,357 +277,344 @@
             const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
             const url = URL.createObjectURL(blob);
             const link = document.createElement('a');
-            link.setAttribute('href', url);
-            link.setAttribute('download', filename);
-            link.style.visibility = 'hidden';
-            document.body.appendChild(link);
+            link.href = url;
+            link.download = 'timesheet_summary.csv';
             link.click();
-            document.body.removeChild(link);
         };
 
-        // --- COMPONENTS: ChartsSection ---
-        const PROJECT_COLORS = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#f97316', '#14b8a6', '#4f46e5'];
+        // --- RENDER LOGIC ---
+        const render = () => {
+            const { data } = state;
+            const dashboard = document.getElementById('dashboard');
+            const emptyState = document.getElementById('empty-state');
 
-        const ChartsSection = ({ data }) => {
-            const { barData, pieData, projects, colorMap } = useMemo(() => {
-                const uniqueProjects = Array.from(new Set(data.rows.map(r => r.project))).sort();
-                const map = {};
-                uniqueProjects.forEach((p, i) => { map[p] = PROJECT_COLORS[i % PROJECT_COLORS.length]; });
+            if (data.rows.length === 0) {
+                dashboard.classList.add('hidden');
+                emptyState.classList.remove('hidden');
+                return;
+            }
 
-                const memberMap = {};
-                data.rows.forEach(row => {
-                    if (!memberMap[row.member]) memberMap[row.member] = { name: row.member };
-                    memberMap[row.member][row.project] = row.totalHours;
-                });
-                const barData = Object.values(memberMap).sort((a, b) => {
-                    const totalA = uniqueProjects.reduce((sum, p) => sum + (a[p] || 0), 0);
-                    const totalB = uniqueProjects.reduce((sum, p) => sum + (b[p] || 0), 0);
-                    return totalB - totalA;
-                });
+            dashboard.classList.remove('hidden');
+            emptyState.classList.add('hidden');
 
-                const projectTotals = {};
-                data.rows.forEach(row => { projectTotals[row.project] = (projectTotals[row.project] || 0) + row.totalHours; });
-                const totalGlobalHours = Object.values(projectTotals).reduce((a, b) => a + b, 0);
-                const pieData = Object.entries(projectTotals).map(([name, value]) => ({
-                    name, value, percentage: ((value / totalGlobalHours) * 100).toFixed(1)
-                })).sort((a, b) => b.value - a.value);
-
-                return { barData, pieData, projects: uniqueProjects, colorMap: map };
-            }, [data]);
-
-            if (!data.rows.length) return null;
-
-            return React.createElement('div', { className: "grid grid-cols-1 lg:grid-cols-3 gap-8 pt-8 border-t border-slate-200" },
-                React.createElement('div', { className: "lg:col-span-2 bg-white p-6 rounded-2xl shadow-sm border border-slate-200" },
-                    React.createElement('div', { className: "flex items-center gap-2 mb-6" },
-                        React.createElement('div', { className: "w-1 h-6 bg-indigo-600 rounded-full" }),
-                        React.createElement('h2', { className: "text-lg font-bold text-slate-800" }, "Hours per Project by Member")
-                    ),
-                    React.createElement('div', { className: "h-[400px] w-full" },
-                        React.createElement(ResponsiveContainer, { width: "100%", height: "100%" },
-                            React.createElement(BarChart, { layout: "vertical", data: barData, margin: { top: 5, right: 30, left: 40, bottom: 5 } },
-                                React.createElement(CartesianGrid, { strokeDasharray: "3 3", horizontal: true, vertical: false, stroke: "#f1f5f9" }),
-                                React.createElement(XAxis, { type: "number", fontSize: 10, tickLine: false, axisLine: false }),
-                                React.createElement(YAxis, { type: "category", dataKey: "name", fontSize: 10, tickLine: false, axisLine: false, width: 100 }),
-                                React.createElement(Tooltip, { cursor: { fill: '#f8fafc' }, contentStyle: { borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' } }),
-                                React.createElement(Legend, { verticalAlign: "top", height: 36, iconType: "circle", wrapperStyle: { fontSize: '11px', paddingBottom: '20px' } }),
-                                projects.map(project => React.createElement(Bar, { key: project, dataKey: project, stackId: "a", fill: colorMap[project], barSize: 20 }))
-                            )
-                        )
-                    )
-                ),
-                React.createElement('div', { className: "bg-white p-6 rounded-2xl shadow-sm border border-slate-200" },
-                    React.createElement('div', { className: "flex items-center gap-2 mb-6" },
-                        React.createElement('div', { className: "w-1 h-6 bg-emerald-500 rounded-full" }),
-                        React.createElement('h2', { className: "text-lg font-bold text-slate-800" }, "Team Effort Allocation")
-                    ),
-                    React.createElement('div', { className: "h-[300px] w-full" },
-                        React.createElement(ResponsiveContainer, { width: "100%", height: "100%" },
-                            React.createElement(PieChart, null,
-                                React.createElement(Pie, { data: pieData, cx: "50%", cy: "50%", innerRadius: 60, outerRadius: 100, paddingAngle: 5, dataKey: "value" },
-                                    pieData.map((entry, index) => React.createElement(Cell, { key: `cell-${index}`, fill: colorMap[entry.name], stroke: "none" }))
-                                ),
-                                React.createElement(Tooltip, { formatter: (value, name, props) => [`${value} hrs (${props.payload.percentage}%)`, name], contentStyle: { borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' } })
-                            )
-                        )
-                    ),
-                    React.createElement('div', { className: "mt-4 space-y-2" },
-                        pieData.map((item) => React.createElement('div', { key: item.name, className: "flex items-center justify-between text-xs" },
-                            React.createElement('div', { className: "flex items-center gap-2" },
-                                React.createElement('div', { className: "w-2.5 h-2.5 rounded-full", style: { backgroundColor: colorMap[item.name] } }),
-                                React.createElement('span', { className: "text-slate-600 font-medium truncate max-w-[140px]" }, item.name)
-                            ),
-                            React.createElement('span', { className: "text-slate-900 font-bold" }, item.percentage, "%")
-                        ))
-                    )
-                )
-            );
+            renderTimesheetTable();
+            renderMemberSummaryTable();
+            renderCharts();
+            setupScrollSync();
         };
 
-        // --- COMPONENTS: MemberSummaryTable ---
-        const MemberSummaryTable = ({ data, onCellClick, scrollRef }) => {
-            const [sortConfig, setSortConfig] = useState({ key: 'member', direction: 'asc' });
-            const targetHours = useMemo(() => data.dates.filter(d => !isWeekend(d)).length * 8, [data.dates]);
+        const renderTimesheetTable = () => {
+            const { data } = state;
+            const container = document.getElementById('timesheet-container');
+            const targetHours = data.dates.filter(d => !isWeekend(d)).length * 8;
 
-            const memberSummaries = useMemo(() => {
-                const map = {};
-                data.rows.forEach((row) => {
-                    if (!map[row.member]) map[row.member] = { member: row.member, avatar: row.avatar, dailyTotals: {}, totalMonth: 0 };
-                    Object.entries(row.dailyHours).forEach(([date, hours]) => {
-                        map[row.member].dailyTotals[date] = (map[row.member].dailyTotals[date] || 0) + hours;
-                        map[row.member].totalMonth += hours;
-                    });
+            let html = `
+                <table class="w-full text-left border-collapse min-w-max table-fixed">
+                    <thead>
+                        <tr class="bg-slate-50 border-b border-slate-200 sticky top-0 z-10">
+                            <th style="width: 100px" class="px-4 py-3 font-semibold text-slate-700 text-xs border-r border-slate-200 bg-slate-50 sticky left-0 z-20">Project</th>
+                            <th style="width: 200px" class="px-4 py-3 font-semibold text-slate-700 text-xs border-r border-slate-200 bg-slate-50 sticky left-[100px] z-20">Member</th>
+                            ${data.dates.map(date => {
+                                const d = new Date(date);
+                                const isInvalid = isNaN(d.getTime());
+                                const day = isInvalid ? date.split('-')[0] : d.getDate();
+                                const month = isInvalid ? (date.split('-')[1] || '') : d.toLocaleString('default', { month: 'short' });
+                                return `
+                                    <th style="width: 48px" class="px-1 py-3 font-semibold text-[9px] uppercase text-center border-r border-slate-200 ${isWeekend(date) ? 'bg-slate-200 text-slate-600' : 'text-slate-600'}">
+                                        ${day}<span class="block font-normal text-slate-400">${month}</span>
+                                    </th>
+                                `;
+                            }).join('')}
+                            <th style="width: 100px" class="px-4 py-3 font-semibold text-slate-700 text-xs text-center border-l border-slate-200">Project Total</th>
+                            <th style="width: 100px" class="px-4 py-3 font-semibold text-indigo-700 text-xs text-center bg-indigo-50 border-l border-slate-200">Working Time</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-100">
+                        ${data.rows.map((row, idx) => `
+                            <tr class="hover:bg-slate-50/50 transition-colors group">
+                                <td class="px-4 py-3 font-medium text-slate-800 text-sm border-r border-slate-200 bg-white sticky left-0 group-hover:bg-slate-50 overflow-hidden">
+                                    <span class="inline-block px-2 py-0.5 rounded bg-slate-100 text-slate-600 font-mono text-[10px]">${row.project}</span>
+                                </td>
+                                <td class="px-4 py-3 text-slate-700 text-sm border-r border-slate-200 bg-white sticky left-[100px] group-hover:bg-slate-50 overflow-hidden">
+                                    <div class="flex items-center gap-2">
+                                        ${row.avatar ? `<img src="${row.avatar}" class="w-5 h-5 rounded-full border border-slate-200">` : ''}
+                                        <span class="truncate text-xs">${row.member}</span>
+                                    </div>
+                                </td>
+                                ${data.dates.map(date => {
+                                    const hours = row.dailyHours[date] || 0;
+                                    const hasLogs = row.dailyLogs && row.dailyLogs[date] && row.dailyLogs[date].length > 0;
+                                    return `
+                                        <td onclick="openDetailsModal('${row.member}', '${row.project}', '${date}')" 
+                                            class="px-1 py-3 text-[10px] text-center border-r border-slate-200 cursor-pointer hover:bg-indigo-50 transition-all ${isWeekend(date) ? 'bg-slate-100' : ''} ${hours ? 'font-semibold text-slate-900' : 'text-slate-300'}">
+                                            <div class="relative group/cell">
+                                                ${hours || '0'}
+                                                ${hasLogs && row.dailyLogs[date].length > 1 ? `<span class="absolute -top-1 -right-1 w-2 h-2 bg-indigo-400 rounded-full border border-white"></span>` : ''}
+                                            </div>
+                                        </td>
+                                    `;
+                                }).join('')}
+                                <td class="px-4 py-3 font-bold text-slate-600 text-xs text-center border-l border-slate-200">${row.totalHours.toFixed(1)}</td>
+                                <td class="px-4 py-3 font-black text-xs text-center border-l border-slate-200 bg-slate-50/50 ${row.memberTotalMonth >= targetHours ? 'text-emerald-600' : 'text-rose-600'}">
+                                    ${row.memberTotalMonth.toFixed(1)}
+                                </td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            `;
+            container.innerHTML = html;
+        };
+
+        const renderMemberSummaryTable = () => {
+            const { data } = state;
+            const container = document.getElementById('member-summary-container');
+            const targetHours = data.dates.filter(d => !isWeekend(d)).length * 8;
+
+            const map = {};
+            data.rows.forEach((row) => {
+                if (!map[row.member]) map[row.member] = { member: row.member, avatar: row.avatar, dailyTotals: {}, totalMonth: 0 };
+                Object.entries(row.dailyHours).forEach(([date, hours]) => {
+                    map[row.member].dailyTotals[date] = (map[row.member].dailyTotals[date] || 0) + hours;
+                    map[row.member].totalMonth += hours;
                 });
-                const items = Object.values(map);
-                if (sortConfig.direction !== null) {
-                    items.sort((a, b) => {
-                        let aV = sortConfig.key === 'member' ? a.member : sortConfig.key === 'totalMonth' ? a.totalMonth : (a.dailyTotals[sortConfig.key] || 0);
-                        let bV = sortConfig.key === 'member' ? b.member : sortConfig.key === 'totalMonth' ? b.totalMonth : (b.dailyTotals[sortConfig.key] || 0);
-                        if (aV < bV) return sortConfig.direction === 'asc' ? -1 : 1;
-                        if (aV > bV) return sortConfig.direction === 'asc' ? 1 : -1;
-                        return 0;
-                    });
-                }
-                return items;
-            }, [data, sortConfig]);
+            });
+            const memberSummaries = Object.values(map).sort((a, b) => a.member.localeCompare(b.member));
 
-            if (data.rows.length === 0) return null;
-
-            return React.createElement('div', { className: "space-y-4" },
-                React.createElement('div', { className: "flex items-center gap-2" },
-                    React.createElement('div', { className: "w-1 h-6 bg-indigo-600 rounded-full" }),
-                    React.createElement('h2', { className: "text-lg font-bold text-slate-800" }, "Member Daily Totals")
-                ),
-                React.createElement('div', { ref: scrollRef, className: "w-full overflow-x-auto bg-white rounded-xl shadow-sm border border-slate-200" },
-                    React.createElement('table', { className: "w-full text-left border-collapse min-w-max table-fixed" },
-                        React.createElement('thead', null,
-                            React.createElement('tr', { className: "bg-slate-50 border-b border-slate-200 sticky top-0 z-10" },
-                                React.createElement('th', { style: { width: '300px' }, className: "px-4 py-3 font-semibold text-slate-700 text-xs border-r border-slate-200 bg-slate-50 sticky left-0 z-20 cursor-pointer select-none hover:bg-slate-100", onClick: () => setSortConfig({ key: 'member', direction: sortConfig.direction === 'asc' ? 'desc' : 'asc' }) }, "Member"),
-                                data.dates.map(date => React.createElement('th', { key: date, style: { width: '48px' }, className: `px-1 py-3 font-semibold text-[9px] uppercase text-center border-r border-slate-200 ${isWeekend(date) ? 'bg-slate-200 text-slate-600' : 'text-slate-600'}` }, date.split('-')[0], React.createElement('span', { className: "block font-normal text-slate-400" }, date.split('-')[1]))),
-                                React.createElement('th', { style: { width: '200px' }, className: "px-4 py-3 font-semibold text-indigo-700 text-xs text-center bg-indigo-50 border-l border-slate-200" }, "Monthly Total")
-                            )
-                        ),
-                        React.createElement('tbody', { className: "divide-y divide-slate-100" },
-                            memberSummaries.map(summary => React.createElement('tr', { key: summary.member, className: "hover:bg-slate-50/50 transition-colors group" },
-                                React.createElement('td', { className: "px-4 py-3 text-slate-700 text-sm border-r border-slate-200 bg-white sticky left-0 group-hover:bg-slate-50 overflow-hidden" },
-                                    React.createElement('div', { className: "flex items-center gap-2" },
-                                        summary.avatar && React.createElement('img', { src: summary.avatar, className: "w-6 h-6 rounded-full border border-slate-200" }),
-                                        React.createElement('span', { className: "truncate max-w-[240px] font-medium text-xs" }, summary.member)
-                                    )
-                                ),
-                                data.dates.map(date => {
+            let html = `
+                <table class="w-full text-left border-collapse min-w-max table-fixed">
+                    <thead>
+                        <tr class="bg-slate-50 border-b border-slate-200 sticky top-0 z-10">
+                            <th style="width: 300px" class="px-4 py-3 font-semibold text-slate-700 text-xs border-r border-slate-200 bg-slate-50 sticky left-0 z-20">Member</th>
+                            ${data.dates.map(date => {
+                                const d = new Date(date);
+                                const isInvalid = isNaN(d.getTime());
+                                const day = isInvalid ? date.split('-')[0] : d.getDate();
+                                const month = isInvalid ? (date.split('-')[1] || '') : d.toLocaleString('default', { month: 'short' });
+                                return `
+                                    <th style="width: 48px" class="px-1 py-3 font-semibold text-[9px] uppercase text-center border-r border-slate-200 ${isWeekend(date) ? 'bg-slate-200 text-slate-600' : 'text-slate-600'}">
+                                        ${day}<span class="block font-normal text-slate-400">${month}</span>
+                                    </th>
+                                `;
+                            }).join('')}
+                            <th style="width: 200px" class="px-4 py-3 font-semibold text-indigo-700 text-xs text-center bg-indigo-50 border-l border-slate-200">Monthly Total</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-100">
+                        ${memberSummaries.map(summary => `
+                            <tr class="hover:bg-slate-50/50 transition-colors group">
+                                <td class="px-4 py-3 text-slate-700 text-sm border-r border-slate-200 bg-white sticky left-0 group-hover:bg-slate-50 overflow-hidden">
+                                    <div class="flex items-center gap-2">
+                                        ${summary.avatar ? `<img src="${summary.avatar}" class="w-6 h-6 rounded-full border border-slate-200">` : ''}
+                                        <span class="truncate max-w-[240px] font-medium text-xs">${summary.member}</span>
+                                    </div>
+                                </td>
+                                ${data.dates.map(date => {
                                     const hours = summary.dailyTotals[date] || 0;
                                     let bg = hours > 12 ? 'bg-red-500 text-white' : hours > 8 ? 'bg-orange-500 text-white' : (hours > 0 && hours < 8 && !isWeekend(date)) ? 'bg-yellow-50' : isWeekend(date) ? 'bg-slate-100' : '';
-                                    return React.createElement('td', { key: date, onClick: () => onCellClick?.(summary.member, date, hours), className: `px-1 py-3 text-[10px] text-center border-r border-slate-200 cursor-pointer hover:ring-2 hover:ring-indigo-400 transition-all ${bg}` }, hours || '0');
-                                }),
-                                React.createElement('td', { className: `px-4 py-3 font-black text-sm text-center border-l border-slate-200 bg-slate-50/50 ${summary.totalMonth >= targetHours ? 'text-emerald-600' : 'text-rose-600'}` }, summary.totalMonth.toFixed(1))
-                            ))
-                        )
-                    )
-                )
-            );
+                                    return `
+                                        <td onclick="openDetailsModal('${summary.member}', '', '${date}')" 
+                                            class="px-1 py-3 text-[10px] text-center border-r border-slate-200 cursor-pointer hover:ring-2 hover:ring-indigo-400 transition-all ${bg}">
+                                            ${hours || '0'}
+                                        </td>
+                                    `;
+                                }).join('')}
+                                <td class="px-4 py-3 font-black text-sm text-center border-l border-slate-200 bg-slate-50/50 ${summary.totalMonth >= targetHours ? 'text-emerald-600' : 'text-rose-600'}">
+                                    ${summary.totalMonth.toFixed(1)}
+                                </td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            `;
+            container.innerHTML = html;
         };
 
-        // --- COMPONENTS: TimesheetTable ---
-        const TimesheetTable = ({ data, onCellClick, scrollRef }) => {
-            const [sortConfig, setSortConfig] = useState({ key: 'project', direction: 'asc' });
-            const targetHours = useMemo(() => data.dates.filter(d => !isWeekend(d)).length * 8, [data.dates]);
+        const renderCharts = () => {
+            const { data } = state;
+            const projects = Array.from(new Set(data.rows.map(r => r.project))).sort();
+            const colorMap = {};
+            projects.forEach((p, i) => { colorMap[p] = PROJECT_COLORS[i % PROJECT_COLORS.length]; });
 
-            const sortedRows = useMemo(() => {
-                const items = [...data.rows];
-                if (sortConfig.direction !== null) {
-                    items.sort((a, b) => {
-                        let aV = a[sortConfig.key] || (sortConfig.key in a.dailyHours ? a.dailyHours[sortConfig.key] : 0);
-                        let bV = b[sortConfig.key] || (sortConfig.key in b.dailyHours ? b.dailyHours[sortConfig.key] : 0);
-                        if (aV < bV) return sortConfig.direction === 'asc' ? -1 : 1;
-                        if (aV > bV) return sortConfig.direction === 'asc' ? 1 : -1;
-                        return 0;
-                    });
+            // Bar Chart Data
+            const memberMap = {};
+            data.rows.forEach(row => {
+                if (!memberMap[row.member]) memberMap[row.member] = { name: row.member, totals: {} };
+                memberMap[row.member].totals[row.project] = row.totalHours;
+            });
+            const barData = Object.values(memberMap).sort((a, b) => {
+                const totalA = projects.reduce((sum, p) => sum + (a.totals[p] || 0), 0);
+                const totalB = projects.reduce((sum, p) => sum + (b.totals[p] || 0), 0);
+                return totalB - totalA;
+            });
+
+            // Pie Chart Data
+            const projectTotals = {};
+            data.rows.forEach(row => { projectTotals[row.project] = (projectTotals[row.project] || 0) + row.totalHours; });
+            const totalGlobalHours = Object.values(projectTotals).reduce((a, b) => a + b, 0);
+            const pieData = Object.entries(projectTotals).map(([name, value]) => ({
+                name, value, percentage: ((value / totalGlobalHours) * 100).toFixed(1)
+            })).sort((a, b) => b.value - a.value);
+
+            // Destroy existing charts
+            if (state.charts.bar) state.charts.bar.destroy();
+            if (state.charts.pie) state.charts.pie.destroy();
+
+            // Render Bar Chart
+            const barCtx = document.getElementById('barChart').getContext('2d');
+            state.charts.bar = new Chart(barCtx, {
+                type: 'bar',
+                data: {
+                    labels: barData.map(d => d.name),
+                    datasets: projects.map(p => ({
+                        label: p,
+                        data: barData.map(d => d.totals[p] || 0),
+                        backgroundColor: colorMap[p],
+                        stack: 'Stack 0'
+                    }))
+                },
+                options: {
+                    indexAxis: 'y',
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { position: 'top', labels: { boxWidth: 12, font: { size: 10 } } } },
+                    scales: { x: { stacked: true, grid: { display: false } }, y: { stacked: true, grid: { display: false } } }
                 }
-                return items;
-            }, [data.rows, sortConfig]);
+            });
 
-            if (data.rows.length === 0) return null;
+            // Render Pie Chart
+            const pieCtx = document.getElementById('pieChart').getContext('2d');
+            state.charts.pie = new Chart(pieCtx, {
+                type: 'doughnut',
+                data: {
+                    labels: pieData.map(d => d.name),
+                    datasets: [{
+                        data: pieData.map(d => d.value),
+                        backgroundColor: pieData.map(d => colorMap[d.name]),
+                        borderWidth: 0
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    cutout: '60%'
+                }
+            });
 
-            return React.createElement('div', { className: "space-y-4" },
-                React.createElement('div', { className: "flex items-center justify-between" },
-                    React.createElement('div', { className: "flex items-center gap-2" },
-                        React.createElement('div', { className: "w-1 h-6 bg-indigo-600 rounded-full" }),
-                        React.createElement('h2', { className: "text-lg font-bold text-slate-800" }, "Project-Member Summary")
-                    ),
-                    React.createElement('button', { 
-                        onClick: () => exportToCsv(data), 
-                        className: "flex items-center gap-2 px-3 py-1.5 text-xs font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-lg transition-all" 
-                    }, 
-                        React.createElement('svg', { className: "w-4 h-4", fill: "none", stroke: "currentColor", viewBox: "0 0 24 24" },
-                            React.createElement('path', { strokeLinecap: "round", strokeLinejoin: "round", strokeWidth: 2, d: "M4 16v1a2 2 0 002 2h12a2 2 0 002-2v-1m-4-4l-4 4m0 0l-4-4m4 4V4" })
-                        ),
-                        "Export CSV"
-                    )
-                ),
-                React.createElement('div', { ref: scrollRef, className: "w-full overflow-x-auto bg-white rounded-xl shadow-sm border border-slate-200" },
-                    React.createElement('table', { className: "w-full text-left border-collapse min-w-max table-fixed" },
-                        React.createElement('thead', null,
-                            React.createElement('tr', { className: "bg-slate-50 border-b border-slate-200 sticky top-0 z-10" },
-                                React.createElement('th', { style: { width: '100px' }, className: "px-4 py-3 font-semibold text-slate-700 text-xs border-r border-slate-200 bg-slate-50 sticky left-0 z-20" }, "Project"),
-                                React.createElement('th', { style: { width: '200px' }, className: "px-4 py-3 font-semibold text-slate-700 text-xs border-r border-slate-200 bg-slate-50 sticky left-[100px] z-20" }, "Member"),
-                                data.dates.map(date => React.createElement('th', { key: date, style: { width: '48px' }, className: `px-1 py-3 font-semibold text-[9px] uppercase text-center border-r border-slate-200 ${isWeekend(date) ? 'bg-slate-200 text-slate-600' : 'text-slate-600'}` }, date.split('-')[0], React.createElement('span', { className: "block font-normal text-slate-400" }, date.split('-')[1]))),
-                                React.createElement('th', { style: { width: '100px' }, className: "px-4 py-3 font-semibold text-slate-700 text-xs text-center border-l border-slate-200" }, "Project Total"),
-                                React.createElement('th', { style: { width: '100px' }, className: "px-4 py-3 font-semibold text-indigo-700 text-xs text-center bg-indigo-50 border-l border-slate-200" }, "Working Time")
-                            )
-                        ),
-                        React.createElement('tbody', { className: "divide-y divide-slate-100" },
-                            sortedRows.map((row, idx) => React.createElement('tr', { key: `${row.member}-${row.project}-${idx}`, className: "hover:bg-slate-50/50 transition-colors group" },
-                                React.createElement('td', { className: "px-4 py-3 font-medium text-slate-800 text-sm border-r border-slate-200 bg-white sticky left-0 group-hover:bg-slate-50 overflow-hidden" }, React.createElement('span', { className: "inline-block px-2 py-0.5 rounded bg-slate-100 text-slate-600 font-mono text-[10px]" }, row.project)),
-                                React.createElement('td', { className: "px-4 py-3 text-slate-700 text-sm border-r border-slate-200 bg-white sticky left-[100px] group-hover:bg-slate-50 overflow-hidden" },
-                                    React.createElement('div', { className: "flex items-center gap-2" },
-                                        row.avatar && React.createElement('img', { src: row.avatar, className: "w-5 h-5 rounded-full border border-slate-200" }),
-                                        React.createElement('span', { className: "truncate text-xs" }, row.member)
-                                    )
-                                ),
-                                data.dates.map(date => {
-                                    const hours = row.dailyHours[date] || 0;
-                                    return React.createElement('td', { key: date, onClick: () => onCellClick?.(row.member, row.project, date, hours), className: `px-1 py-3 text-[10px] text-center border-r border-slate-200 cursor-pointer hover:bg-indigo-50 transition-all ${isWeekend(date) ? 'bg-slate-100' : ''} ${hours ? 'font-semibold text-slate-900' : 'text-slate-300'}` }, hours || '0');
-                                }),
-                                React.createElement('td', { className: "px-4 py-3 font-bold text-slate-600 text-xs text-center border-l border-slate-200" }, row.totalHours.toFixed(1)),
-                                React.createElement('td', { className: `px-4 py-3 font-black text-xs text-center border-l border-slate-200 bg-slate-50/50 ${row.memberTotalMonth >= targetHours ? 'text-emerald-600' : 'text-rose-600'}` }, row.memberTotalMonth.toFixed(1))
-                            ))
-                        )
-                    )
-                )
-            );
+            // Render Pie Legend
+            const legendContainer = document.getElementById('pie-legend');
+            legendContainer.innerHTML = pieData.map(item => `
+                <div class="flex items-center justify-between text-xs">
+                    <div class="flex items-center gap-2">
+                        <div class="w-2.5 h-2.5 rounded-full" style="background-color: ${colorMap[item.name]}"></div>
+                        <span class="text-slate-600 font-medium truncate max-w-[140px]">${item.name}</span>
+                    </div>
+                    <span class="text-slate-900 font-bold">${item.percentage}%</span>
+                </div>
+            `).join('');
         };
 
-        // --- MAIN APP COMPONENT ---
-        const SAMPLE_CSV = `Avatar,Worklog Author,1-Dec-25,2-Dec-25,3-Dec-25,4-Dec-25,5-Dec-25,6-Dec-25,7-Dec-25,8-Dec-25,9-Dec-25,10-Dec-25,11-Dec-25,12-Dec-25,13-Dec-25,14-Dec-25,15-Dec-25,16-Dec-25,17-Dec-25,18-Dec-25,19-Dec-25,20-Dec-25,21-Dec-25,22-Dec-25,23-Dec-25,24-Dec-25,25-Dec-25,26-Dec-25,27-Dec-25,28-Dec-25,29-Dec-25,30-Dec-25,31-Dec-25,Started,Key,Comment
+        const setupScrollSync = () => {
+            const ts = document.getElementById('timesheet-container');
+            const sm = document.getElementById('member-summary-container');
+            if (!ts || !sm) return;
+            
+            const syncTs = () => { if (sm.scrollLeft !== ts.scrollLeft) sm.scrollLeft = ts.scrollLeft; };
+            const syncSm = () => { if (ts.scrollLeft !== sm.scrollLeft) ts.scrollLeft = sm.scrollLeft; };
+            
+            ts.onscroll = syncTs;
+            sm.onscroll = syncSm;
+        };
+
+        const openDetailsModal = (member, project, date) => {
+            let logs = [];
+            if (project) {
+                const row = state.data.rows.find(r => r.member === member && r.project === project);
+                logs = (row && row.dailyLogs && row.dailyLogs[date]) ? row.dailyLogs[date] : [];
+            } else {
+                // Sum up all projects for this member on this date
+                state.data.rows.filter(r => r.member === member).forEach(r => {
+                    if (r.dailyLogs && r.dailyLogs[date]) {
+                        logs = [...logs, ...r.dailyLogs[date]];
+                    }
+                });
+            }
+            
+            document.getElementById('details-member').innerText = member;
+            document.getElementById('details-project').innerText = project || 'All Projects Summary';
+            document.getElementById('details-date').innerText = date;
+            
+            const listContainer = document.getElementById('details-list');
+            if (logs.length === 0) {
+                listContainer.innerHTML = `<div class="p-8 text-center text-slate-400 italic">No detailed logs found for this day.</div>`;
+            } else {
+                listContainer.innerHTML = logs.map(log => `
+                    <div class="p-4 bg-white border border-slate-100 rounded-xl shadow-sm space-y-2 hover:border-indigo-200 transition-all">
+                        <div class="flex justify-between items-start">
+                            <div class="flex items-center gap-2">
+                                <span class="px-2 py-0.5 bg-slate-100 text-slate-600 font-mono text-[10px] rounded border border-slate-200">${log.key}</span>
+                                ${!project ? `<span class="text-[10px] font-bold text-slate-400 uppercase">${getProjectCode(log.key)}</span>` : ''}
+                            </div>
+                            <span class="text-sm font-bold text-indigo-600">${log.hours}h</span>
+                        </div>
+                        <p class="text-sm text-slate-700 leading-relaxed">${log.comment || '<span class="text-slate-300 italic">No comment provided</span>'}</p>
+                    </div>
+                `).join('');
+            }
+            
+            document.getElementById('details-modal').classList.remove('hidden');
+        };
+
+        const closeDetailsModal = () => {
+            document.getElementById('details-modal').classList.add('hidden');
+        };
+
+        const processFile = (file) => {
+            if (!file || !file.name.toLowerCase().endsWith('.csv')) {
+                alert("Please upload a valid CSV file.");
+                return;
+            }
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                state.data = parseTimesheetCsv(e.target.result);
+                render();
+            };
+            reader.readAsText(file);
+        };
+
+        // --- INITIALIZATION ---
+        window.onload = () => {
+            const uploadInput = document.getElementById('csv-upload');
+            const loadSampleBtn = document.getElementById('load-sample');
+            const exportCsvBtn = document.getElementById('export-csv');
+            const dropZone = document.getElementById('drop-zone');
+
+            uploadInput.onchange = (e) => processFile(e.target.files[0]);
+            
+            loadSampleBtn.onclick = () => {
+                const SAMPLE_CSV = `Avatar,Worklog Author,1-Dec-25,2-Dec-25,3-Dec-25,4-Dec-25,5-Dec-25,6-Dec-25,7-Dec-25,8-Dec-25,9-Dec-25,10-Dec-25,11-Dec-25,12-Dec-25,13-Dec-25,14-Dec-25,15-Dec-25,16-Dec-25,17-Dec-25,18-Dec-25,19-Dec-25,20-Dec-25,21-Dec-25,22-Dec-25,23-Dec-25,24-Dec-25,25-Dec-25,26-Dec-25,27-Dec-25,28-Dec-25,29-Dec-25,30-Dec-25,31-Dec-25,Started,Key,Comment
 https://picsum.photos/48/48?random=1,Dang Hoang Dai Nghia,8h,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2025-12-01T08:00:00.000+0700,UPDP-2,
 https://picsum.photos/48/48?random=2,Dang Hoang Dai Nghia,0,8h,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2025-12-02T08:00:00.000+0700,UPDP-2,IM- Implement feature | Update feedback
 https://picsum.photos/48/48?random=3,Dang Hoang Dai Nghia,0,8h,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2025-12-02T08:00:00.000+0700,ETOWN-1,eTown Tour UI-UX
 https://picsum.photos/48/48?random=4,Dien Than,1h,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2025-12-01T16:47:18.611+0700,MTL-1,
 https://picsum.photos/48/48?random=5,Dung Nguyen,3h,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2025-12-01T14:23:11.239+0700,VX-125,Viewer + Client Portal`;
-
-        const App = () => {
-            const [data, setData] = useState({ rows: [], dates: [] });
-            const [isProcessing, setIsProcessing] = useState(false);
-            const [isDragging, setIsDragging] = useState(false);
-            const [editModal, setEditModal] = useState(null);
-            const [modalSelectedProject, setModalSelectedProject] = useState('');
-            const [modalHours, setModalHours] = useState(0);
-
-            const tsRef = useRef(null);
-            const smRef = useRef(null);
-
-            useEffect(() => {
-                const ts = tsRef.current; const sm = smRef.current;
-                if (!ts || !sm) return;
-                const syncTs = () => { if (sm.scrollLeft !== ts.scrollLeft) sm.scrollLeft = ts.scrollLeft; };
-                const syncSm = () => { if (ts.scrollLeft !== sm.scrollLeft) ts.scrollLeft = sm.scrollLeft; };
-                ts.addEventListener('scroll', syncTs); sm.addEventListener('scroll', syncSm);
-                return () => { ts.removeEventListener('scroll', syncTs); sm.removeEventListener('scroll', syncSm); };
-            }, [data]);
-
-            const projects = useMemo(() => Array.from(new Set(data.rows.map(r => r.project))).sort(), [data.rows]);
-
-            const processFile = (file) => {
-                if (!file || !file.name.endsWith('.csv')) {
-                    alert("Please upload a valid CSV file.");
-                    return;
-                }
-                setIsProcessing(true);
-                const reader = new FileReader();
-                reader.onload = (ev) => {
-                    setData(parseTimesheetCsv(ev.target.result));
-                    setIsProcessing(false);
-                };
-                reader.readAsText(file);
+                state.data = parseTimesheetCsv(SAMPLE_CSV);
+                render();
             };
 
-            const handleFileUpload = (e) => {
-                const file = e.target.files?.[0];
+            exportCsvBtn.onclick = exportToCsv;
+
+            // Drag and Drop
+            dropZone.ondragover = (e) => { e.preventDefault(); dropZone.classList.add('dragging'); };
+            dropZone.ondragleave = (e) => { e.preventDefault(); dropZone.classList.remove('dragging'); };
+            dropZone.ondrop = (e) => {
+                e.preventDefault();
+                dropZone.classList.remove('dragging');
+                const file = e.dataTransfer.files[0];
                 if (file) processFile(file);
             };
-
-            const updateEntry = (member, project, date, hours) => {
-                setData(prev => {
-                    const newRows = [...prev.rows];
-                    let idx = newRows.findIndex(r => r.member === member && r.project === project);
-                    if (idx === -1) {
-                        newRows.push({ member, project, dailyHours: { [date]: hours }, totalHours: hours, memberTotalMonth: 0 });
-                    } else {
-                        const row = { ...newRows[idx] };
-                        row.dailyHours = { ...row.dailyHours, [date]: hours };
-                        row.totalHours = Object.values(row.dailyHours).reduce((s, h) => s + h, 0);
-                        newRows[idx] = row;
-                    }
-                    const mTotal = newRows.filter(r => r.member === member).reduce((s, r) => s + r.totalHours, 0);
-                    const final = newRows.map(r => r.member === member ? { ...r, memberTotalMonth: mTotal } : r);
-                    return { ...prev, rows: final.sort((a, b) => a.project.localeCompare(b.project) || a.member.localeCompare(b.member)) };
-                });
-                setEditModal(null);
-            };
-
-            return React.createElement('div', { 
-                className: `min-h-screen p-4 md:p-8 space-y-8 transition-colors duration-200 ${isDragging ? 'bg-indigo-50/50' : 'bg-slate-50'}`,
-                onDragOver: (e) => { e.preventDefault(); setIsDragging(true); },
-                onDragLeave: (e) => { e.preventDefault(); setIsDragging(false); },
-                onDrop: (e) => { e.preventDefault(); setIsDragging(false); const file = e.dataTransfer.files?.[0]; if (file) processFile(file); }
-            },
-                React.createElement('header', { className: "max-w-7xl mx-auto flex flex-col md:flex-row md:items-center justify-between gap-4" },
-                    React.createElement('div', null,
-                        React.createElement('h1', { className: "text-2xl font-bold text-slate-900 tracking-tight flex items-center gap-2" }, 
-                            React.createElement('svg', { className: "w-8 h-8 text-indigo-600", fill: "currentColor", viewBox: "0 0 24 24" },
-                                React.createElement('path', { d: "M21 16.5c0 .38-.21.71-.53.88l-7.9 4.44c-.16.09-.36.14-.57.14s-.41-.05-.57-.14l-7.9-4.44A.991.991 0 013 16.5v-9c0-.38.21-.71.53-.88l7.9-4.44c.16-.09.36-.14.57-.14s.41.05.57.14l7.9 4.44c.32.17.53.5.53.88v9zM12 4.15L6.04 7.5 12 10.85l5.96-3.35L12 4.15zM5 15.91l6 3.38v-6.71L5 9.21v6.7zm14 0v-6.7l-6 3.37v6.71l6-3.38z" })
-                            ),
-                            "JIRA Timesheet Summary"
-                        ),
-                        React.createElement('p', { className: "text-slate-500 mt-1" }, "Real-time editable project summary (No Build Version)")
-                    ),
-                    React.createElement('div', { className: "flex items-center gap-3" },
-                        React.createElement('button', { onClick: () => setData(parseTimesheetCsv(SAMPLE_CSV)), className: "px-4 py-2 text-sm font-medium text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 shadow-sm transition-all" }, "Load Sample"),
-                        React.createElement('label', { className: "relative cursor-pointer" },
-                            React.createElement('input', { type: "file", accept: ".csv", onChange: handleFileUpload, className: "hidden" }),
-                            React.createElement('div', { className: "px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 shadow-md flex items-center gap-2 transition-all" }, 
-                                React.createElement('svg', { className: "w-4 h-4", fill: "none", stroke: "currentColor", viewBox: "0 0 24 24" },
-                                    React.createElement('path', { strokeLinecap: "round", strokeLinejoin: "round", strokeWidth: 2, d: "M4 16v1a2 2 0 002 2h12a2 2 0 002-2v-1m-4-8l-4-4m0 0L8 8m4-4v12" })
-                                ),
-                                "Upload CSV"
-                            )
-                        )
-                    )
-                ),
-                React.createElement('main', { className: "max-w-7xl mx-auto" },
-                    !data.rows.length ? React.createElement('div', { className: "flex flex-col items-center justify-center p-16 bg-white rounded-2xl border-2 border-dashed border-slate-200" }, React.createElement('h2', { className: "text-xl font-bold text-slate-700 mb-2" }, "Upload your JIRA CSV to start")) :
-                    React.createElement('div', { className: "space-y-12" },
-                        React.createElement(TimesheetTable, { data, scrollRef: tsRef, onCellClick: (m, p, d, h) => { setEditModal({ m, p, d, h, type: 'edit' }); setModalSelectedProject(p); setModalHours(h); } }),
-                        React.createElement(MemberSummaryTable, { data, scrollRef: smRef, onCellClick: (m, d, h) => { setEditModal({ m, d, h: 0, type: 'add' }); setModalSelectedProject(projects[0]); setModalHours(0); } }),
-                        React.createElement(ChartsSection, { data })
-                    )
-                ),
-                editModal && React.createElement('div', { className: "fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm" },
-                    React.createElement('div', { className: "bg-white rounded-2xl shadow-2xl w-full max-w-lg p-6 space-y-4" },
-                        React.createElement('h3', { className: "font-bold text-slate-800 text-lg" }, editModal.type === 'edit' ? 'Edit Worklog' : 'Add Worklog'),
-                        React.createElement('div', { className: "p-3 bg-indigo-50 rounded-lg" }, React.createElement('p', { className: "text-sm font-bold" }, editModal.m), React.createElement('p', { className: "text-xs text-indigo-600" }, editModal.d)),
-                        React.createElement('div', { className: "space-y-4" },
-                            React.createElement('div', null,
-                                React.createElement('label', { className: "block text-xs font-bold text-slate-400 uppercase mb-1" }, "Project"),
-                                React.createElement('select', { value: modalSelectedProject, onChange: (e) => setModalSelectedProject(e.target.value), className: "w-full p-2 border rounded-lg" }, projects.map(p => React.createElement('option', { key: p, value: p }, p)))
-                            ),
-                            React.createElement('div', null,
-                                React.createElement('label', { className: "block text-xs font-bold text-slate-400 uppercase mb-1" }, "Hours"),
-                                React.createElement('input', { type: "number", step: "0.5", value: modalHours, onChange: (e) => setModalHours(parseFloat(e.target.value)), className: "w-full p-2 border rounded-lg text-lg font-bold" })
-                            ),
-                            React.createElement('div', { className: "flex gap-3" },
-                                React.createElement('button', { onClick: () => setEditModal(null), className: "flex-1 p-2 border rounded-lg" }, "Cancel"),
-                                React.createElement('button', { onClick: () => updateEntry(editModal.m, modalSelectedProject, editModal.d, modalHours), className: "flex-1 p-2 bg-indigo-600 text-white rounded-lg font-bold" }, "Save")
-                            )
-                        )
-                    )
-                )
-            );
         };
-
-        const root = ReactDOM.createRoot(document.getElementById('root'));
-        root.render(React.createElement(App));
     </script>
 </body>
 </html>

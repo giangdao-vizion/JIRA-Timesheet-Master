@@ -4,11 +4,12 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "http-server . -p 3000",
     "build": "echo 'No build needed'",
-    "preview": "vite preview"
+    "lint": "echo 'No lint needed'",
+    "preview": "http-server . -p 3000"
   },
   "devDependencies": {
-    "vite": "^6.2.0"
+    "http-server": "^14.1.1"
   }
 }
