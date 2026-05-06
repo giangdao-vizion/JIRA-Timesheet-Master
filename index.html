@@ -59,12 +59,20 @@
                             <div class="w-1 h-6 bg-indigo-600 rounded-full"></div>
                             <h2 class="text-lg font-bold text-slate-800">Project-Member Summary</h2>
                         </div>
-                        <button id="export-csv" class="flex items-center gap-2 px-3 py-1.5 text-xs font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-lg transition-all">
-                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a2 2 0 002 2h12a2 2 0 002-2v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                            </svg>
-                            Export CSV
-                        </button>
+                        <div class="flex items-center gap-2">
+                            <button id="add-person" class="flex items-center gap-2 px-3 py-1.5 text-xs font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-lg transition-all">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18 9v6m3-3h-6M5.121 17.804A9 9 0 1118 6.34M15 15a3 3 0 11-6 0 3 3 0 016 0z" />
+                                </svg>
+                                Add Person
+                            </button>
+                            <button id="export-csv" class="flex items-center gap-2 px-3 py-1.5 text-xs font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-lg transition-all">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a2 2 0 002 2h12a2 2 0 002-2v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                                </svg>
+                                Export CSV
+                            </button>
+                        </div>
                     </div>
                     <div id="timesheet-container" class="w-full overflow-x-auto bg-white rounded-xl shadow-sm border border-slate-200">
                         <!-- Table injected here -->
@@ -179,7 +187,7 @@
         let state = {
             data: { rows: [], dates: [] },
             isProcessing: false,
-            editModal: null, // { m, p, d, h, type }
+            editModal: null, // { member, project, date, mode, logIdx }
             charts: { bar: null, pie: null }
         };
 
@@ -280,6 +288,7 @@
                         if (!aggregation[aggKey].dailyLogs[dateStr]) aggregation[aggKey].dailyLogs[dateStr] = [];
                         aggregation[aggKey].dailyLogs[dateStr].push({
                             key: taskKey,
+                            project: projectCode,
                             comment: comment,
                             hours: decimalHours
                         });
@@ -373,10 +382,10 @@
                     <tbody class="divide-y divide-slate-100">
                         ${data.rows.map((row, idx) => `
                             <tr class="hover:bg-slate-50/50 transition-colors group">
-                                <td class="px-4 py-3 font-medium text-slate-800 text-sm border-r border-slate-200 bg-white sticky left-0 group-hover:bg-slate-50 overflow-hidden">
+                                <td class="px-4 py-3 font-medium text-slate-800 text-sm border-r border-slate-200 bg-white sticky left-0 z-30 group-hover:bg-slate-50 overflow-hidden">
                                     <span class="inline-block px-2 py-0.5 rounded bg-slate-100 text-slate-600 font-mono text-[10px]">${row.project}</span>
                                 </td>
-                                <td class="px-4 py-3 text-slate-700 text-sm border-r border-slate-200 bg-white sticky left-[100px] group-hover:bg-slate-50 overflow-hidden">
+                                <td class="px-4 py-3 text-slate-700 text-sm border-r border-slate-200 bg-white sticky left-[100px] z-30 group-hover:bg-slate-50 overflow-hidden">
                                     <div class="flex items-center gap-2">
                                         ${row.avatar ? `<img src="${row.avatar}" class="w-5 h-5 rounded-full border border-slate-200">` : ''}
                                         <span class="truncate text-xs">${row.member}</span>
@@ -387,7 +396,7 @@
                                     const hasLogs = row.dailyLogs && row.dailyLogs[date] && row.dailyLogs[date].length > 0;
                                     return `
                                         <td class="px-1 py-3 text-[10px] text-center border-r border-slate-200 group/cell relative ${isWeekend(date) ? 'bg-slate-100' : ''} ${hours ? 'font-semibold text-slate-900' : 'text-slate-300'}">
-                                            <div onclick="openEditModal('${row.member}', '${row.project}', '${date}')" class="cursor-pointer hover:bg-indigo-100 absolute inset-0 flex items-center justify-center transition-all">
+                                            <div onclick="openDetailsModal('${row.member}', '${row.project}', '${date}')" class="cursor-pointer hover:bg-indigo-100 absolute inset-0 flex items-center justify-center transition-all">
                                                 ${hours || '0'}
                                             </div>
                                             ${hasLogs ? `
@@ -449,7 +458,7 @@
                     <tbody class="divide-y divide-slate-100">
                         ${memberSummaries.map(summary => `
                             <tr class="hover:bg-slate-50/50 transition-colors group">
-                                <td class="px-4 py-3 text-slate-700 text-sm border-r border-slate-200 bg-white sticky left-0 group-hover:bg-slate-50 overflow-hidden">
+                                <td class="px-4 py-3 text-slate-700 text-sm border-r border-slate-200 bg-white sticky left-0 z-30 group-hover:bg-slate-50 overflow-hidden">
                                     <div class="flex items-center gap-2">
                                         ${summary.avatar ? `<img src="${summary.avatar}" class="w-6 h-6 rounded-full border border-slate-200">` : ''}
                                         <span class="truncate max-w-[240px] font-medium text-xs">${summary.member}</span>
@@ -459,7 +468,7 @@
                                     const hours = summary.dailyTotals[date] || 0;
                                     let bg = hours > 12 ? 'bg-red-500 text-white' : hours > 8 ? 'bg-orange-500 text-white' : (hours > 0 && hours < 8 && !isWeekend(date)) ? 'bg-yellow-50' : isWeekend(date) ? 'bg-slate-100' : '';
                                     return `
-                                        <td onclick="openEditModal('${summary.member}', '', '${date}')" 
+                                        <td onclick="openDetailsModal('${summary.member}', '', '${date}')" 
                                             class="px-1 py-3 text-[10px] text-center border-r border-slate-200 cursor-pointer hover:ring-2 hover:ring-indigo-400 transition-all ${bg}">
                                             ${hours || '0'}
                                         </td>
@@ -580,8 +589,16 @@
                 logs = (row && row.dailyLogs && row.dailyLogs[date]) ? row.dailyLogs[date] : [];
             } else {
                 state.data.rows.filter(r => r.member === member).forEach(r => {
-                    if (r.dailyLogs && r.dailyLogs[date]) {
-                        logs = [...logs, ...r.dailyLogs[date]];
+                    const projectLogs = (r.dailyLogs && r.dailyLogs[date]) ? r.dailyLogs[date] : [];
+                    if (projectLogs.length) {
+                        logs = [
+                            ...logs,
+                            ...projectLogs.map((log, idx) => ({
+                                ...log,
+                                __project: r.project,
+                                __logIdx: idx
+                            }))
+                        ];
                     }
                 });
             }
@@ -609,7 +626,10 @@
                             </div>
                             <div class="flex items-center gap-2">
                                 <span class="text-sm font-bold text-indigo-600">${log.hours}h</span>
-                                <button onclick="deleteLog('${member}', '${project || getProjectCode(log.key)}', '${date}', ${idx})" class="opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-600 transition-all">
+                                <button onclick="openEditModal('${member}', '${project || log.__project || log.project || getProjectCode(log.key)}', '${date}', 'edit', ${project ? idx : (log.__logIdx ?? idx)})" class="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-indigo-600 transition-all">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5h2m-1 0v14m7-7H5" /></svg>
+                                </button>
+                                <button onclick="deleteLog('${member}', '${project || log.__project || log.project || getProjectCode(log.key)}', '${date}', ${project ? idx : (log.__logIdx ?? idx)})" class="opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-600 transition-all">
                                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
                                 </button>
                             </div>
@@ -626,18 +646,36 @@
             document.getElementById('details-modal').classList.add('hidden');
         };
 
-        const openEditModal = (member, project, date) => {
-            state.editModal = { member, project, date };
+        const openEditModal = (member, project, date, mode = 'add', logIdx = null) => {
+            state.editModal = { member, project, date, mode, logIdx };
             document.getElementById('modal-member').innerText = member;
             document.getElementById('modal-date').innerText = date;
-            document.getElementById('modal-hours-input').value = 1;
-            document.getElementById('modal-key-input').value = project ? `${project}-` : '';
-            document.getElementById('modal-comment-input').value = '';
             
             const select = document.getElementById('modal-project-select');
             const projects = Array.from(new Set(state.data.rows.map(r => r.project))).sort();
             if (projects.length === 0) projects.push('PROJ');
             select.innerHTML = projects.map(p => `<option value="${p}" ${p === project ? 'selected' : ''}>${p}</option>`).join('');
+            select.disabled = false;
+            document.getElementById('modal-title').innerText = mode === 'edit' ? 'Edit Worklog' : 'Add Worklog';
+            document.getElementById('modal-save-btn').innerText = mode === 'edit' ? 'Save Changes' : 'Save Worklog';
+
+            if (mode === 'edit' && logIdx !== null && project) {
+                const row = state.data.rows.find(r => r.member === member && r.project === project);
+                const log = row && row.dailyLogs && row.dailyLogs[date] ? row.dailyLogs[date][logIdx] : null;
+                if (!log) {
+                    alert('Worklog not found.');
+                    return;
+                }
+                document.getElementById('modal-hours-input').value = log.hours;
+                document.getElementById('modal-key-input').value = log.key || `${project}-`;
+                document.getElementById('modal-comment-input').value = log.comment || '';
+                select.value = project;
+                select.disabled = true;
+            } else {
+                document.getElementById('modal-hours-input').value = 1;
+                document.getElementById('modal-key-input').value = project ? `${project}-` : '';
+                document.getElementById('modal-comment-input').value = '';
+            }
             
             document.getElementById('edit-modal').classList.remove('hidden');
         };
@@ -648,7 +686,7 @@
         };
 
         const saveEditModal = () => {
-            const { member, date } = state.editModal;
+            const { member, date, mode, logIdx } = state.editModal;
             const project = document.getElementById('modal-project-select').value;
             const hours = parseFloat(document.getElementById('modal-hours-input').value) || 0;
             const key = document.getElementById('modal-key-input').value || `${project}-Manual`;
@@ -659,13 +697,35 @@
             const newRows = [...state.data.rows];
             let idx = newRows.findIndex(r => r.member === member && r.project === project);
             
-            if (idx === -1) {
+            if (mode === 'edit') {
+                if (idx === -1 || logIdx === null) {
+                    alert('Cannot find worklog to edit.');
+                    return;
+                }
+                const row = { ...newRows[idx] };
+                const logs = row.dailyLogs[date] ? [...row.dailyLogs[date]] : [];
+                if (!logs[logIdx]) {
+                    alert('Cannot find worklog to edit.');
+                    return;
+                }
+
+                const previousHours = logs[logIdx].hours || 0;
+                logs[logIdx] = { key, comment, hours };
+                row.dailyLogs = { ...row.dailyLogs, [date]: logs };
+                row.dailyHours = { ...row.dailyHours, [date]: (row.dailyHours[date] || 0) - previousHours + hours };
+                if (row.dailyHours[date] <= 0) {
+                    delete row.dailyHours[date];
+                    delete row.dailyLogs[date];
+                }
+                row.totalHours = Object.values(row.dailyHours).reduce((s, h) => s + h, 0);
+                newRows[idx] = row;
+            } else if (idx === -1) {
                 const newRow = {
                     member,
                     project,
                     avatar: '',
                     dailyHours: { [date]: hours },
-                    dailyLogs: { [date]: [{ key, comment, hours }] },
+                    dailyLogs: { [date]: [{ key, project, comment, hours }] },
                     totalHours: hours,
                     memberTotalMonth: 0
                 };
@@ -674,7 +734,7 @@
                 const row = { ...newRows[idx] };
                 row.dailyHours = { ...row.dailyHours, [date]: (row.dailyHours[date] || 0) + hours };
                 if (!row.dailyLogs[date]) row.dailyLogs[date] = [];
-                row.dailyLogs[date].push({ key, comment, hours });
+                row.dailyLogs[date].push({ key, project, comment, hours });
                 row.totalHours = Object.values(row.dailyHours).reduce((s, h) => s + h, 0);
                 newRows[idx] = row;
             }
@@ -686,6 +746,7 @@
             
             closeEditModal();
             render();
+            if (mode === 'edit') openDetailsModal(member, project, date);
         };
 
         const deleteLog = (member, project, date, logIdx) => {
@@ -713,6 +774,43 @@
             openDetailsModal(member, project, date); // Refresh details
         };
 
+        const addPersonRow = () => {
+            if (!state.data.rows.length) {
+                alert('Please load data first.');
+                return;
+            }
+
+            const memberName = (prompt('Enter person name:') || '').trim();
+            if (!memberName) return;
+
+            const projects = Array.from(new Set(state.data.rows.map(r => r.project))).sort();
+            const defaultProject = projects[0] || 'PROJ';
+            const projectInput = (prompt('Enter project code (e.g. VX, UPDP):', defaultProject) || '').trim();
+            if (!projectInput) return;
+
+            const existed = state.data.rows.some(
+                (r) => r.member.toLowerCase() === memberName.toLowerCase() && r.project.toLowerCase() === projectInput.toLowerCase()
+            );
+            if (existed) {
+                alert('This member already exists in this project.');
+                return;
+            }
+
+            const newRow = {
+                member: memberName,
+                project: projectInput.toUpperCase(),
+                avatar: '',
+                dailyHours: {},
+                dailyLogs: {},
+                totalHours: 0,
+                memberTotalMonth: 0
+            };
+
+            state.data.rows = [...state.data.rows, newRow]
+                .sort((a, b) => a.project.localeCompare(b.project) || a.member.localeCompare(b.member));
+            render();
+        };
+
         const processFile = (file) => {
             if (!file || !file.name.toLowerCase().endsWith('.csv')) {
                 alert("Please upload a valid CSV file.");
@@ -731,6 +829,7 @@
             const uploadInput = document.getElementById('csv-upload');
             const loadSampleBtn = document.getElementById('load-sample');
             const exportCsvBtn = document.getElementById('export-csv');
+            const addPersonBtn = document.getElementById('add-person');
             const dropZone = document.getElementById('drop-zone');
 
             uploadInput.onchange = (e) => processFile(e.target.files[0]);
@@ -747,6 +846,7 @@ https://picsum.photos/48/48?random=5,Dung Nguyen,3h,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
             };
 
             exportCsvBtn.onclick = exportToCsv;
+            addPersonBtn.onclick = addPersonRow;
             document.getElementById('modal-save-btn').onclick = saveEditModal;
 
             // Drag and Drop
